@@ -15,8 +15,8 @@ const bot = new TelegramBot(TOKEN, { polling: true });
 
 // ── Log outbound IP on startup ────────────────────────────────────────────────
 fetchJson("https://api.ipify.org?format=json")
-  .then(d => console.log("✅ Quantel Nexus automation bot running... Outbound IP:", d.ip))
-  .catch(() => console.log("✅ Quantel Nexus automation bot running..."));
+  .then(d => console.log("✅ Quantel Nexus bot running... Outbound IP:", d.ip))
+  .catch(() => console.log("✅ Quantel Nexus bot running..."));
 
 // ── Dedup: skip same symbol+side within 60s ───────────────────────────────────
 const recentTrades = new Map();
@@ -31,45 +31,52 @@ function isDuplicate(symbol, side) {
 
 // ── Listen to signal groups ───────────────────────────────────────────────────
 bot.on("message", async (msg) => {
-  const chatId = msg.chat.id.toString();
-  const text   = msg.text ?? msg.caption ?? "";
-
-  if (!SIGNAL_CHATS.includes(chatId)) return;
-  if (!text.includes("Entry")) return;
-  if (!text.includes("LONG") && !text.includes("SHORT")) return;
-
-  const isLong = text.includes("LONG");
-  const side   = isLong ? "LONG" : "SHORT";
-
-  // Parse symbol
-  const symMatch = text.match(/[▲▼]\s*[·|]?\s*([A-Z0-9]+)/);
-  if (!symMatch) return;
-  let symbol = symMatch[1];
-  if (!symbol.endsWith("USDT")) symbol += "USDT";
-
-  // Parse prices
-  const tp1Match = text.match(/TP1\s*[▶:→]?\s*([\d.]+)/);
-  const slMatch  = text.match(/SL\s*[▶:→]?\s*([\d.]+)/);
-
-  const tp1 = tp1Match ? parseFloat(tp1Match[1]) : null;
-  const sl  = slMatch  ? parseFloat(slMatch[1])  : null;
-
-  if (isDuplicate(symbol, side)) {
-    console.log(`Duplicate skipped: ${symbol} ${side}`);
-    return;
-  }
-
-  console.log(`Signal detected: ${symbol} ${side} TP1:${tp1} SL:${sl}`);
-
   try {
-    const result = await executeBinanceTrade(symbol, side, tp1, sl);
-    await bot.sendMessage(EXEC_CHAT, result, { parse_mode: "HTML" });
+    const chatId = msg.chat.id.toString();
+    const text   = msg.text ?? msg.caption ?? "";
+
+    if (!SIGNAL_CHATS.includes(chatId)) return;
+    if (!text.includes("Entry")) return;
+    if (!text.includes("LONG") && !text.includes("SHORT")) return;
+
+    const isLong = text.includes("LONG");
+    const side   = isLong ? "LONG" : "SHORT";
+
+    // Parse symbol — matches "· TRXUSDT" in new signal format
+    const symMatch = text.match(/·\s*([A-Z0-9]+)/);
+    if (!symMatch) {
+      console.log("Symbol not found in message:", text.slice(0, 100));
+      return;
+    }
+    let symbol = symMatch[1].trim();
+    if (!symbol.endsWith("USDT")) symbol += "USDT";
+
+    // Parse TP1 and SL
+    const tp1Match = text.match(/TP1\s*[▶:→]?\s*([\d.]+)/);
+    const slMatch  = text.match(/SL\s*[▶:→]?\s*([\d.]+)/);
+
+    const tp1 = tp1Match ? parseFloat(tp1Match[1]) : null;
+    const sl  = slMatch  ? parseFloat(slMatch[1])  : null;
+
+    console.log(`Signal: ${symbol} ${side} | TP1: ${tp1} | SL: ${sl}`);
+
+    if (isDuplicate(symbol, side)) {
+      console.log(`Duplicate skipped: ${symbol} ${side}`);
+      return;
+    }
+
+    try {
+      const result = await executeBinanceTrade(symbol, side, tp1, sl);
+      await bot.sendMessage(EXEC_CHAT, result, { parse_mode: "HTML" });
+    } catch (err) {
+      console.error("Execution error:", err.message);
+      await bot.sendMessage(EXEC_CHAT,
+        `❌ <b>Execution failed</b>\n<b>${symbol} ${side}</b>\n<code>${err.message}</code>`,
+        { parse_mode: "HTML" }
+      );
+    }
   } catch (err) {
-    console.error("Execution error:", err.message);
-    await bot.sendMessage(EXEC_CHAT,
-      `❌ <b>Execution failed</b>\n<b>${symbol} ${side}</b>\n<code>${err.message}</code>`,
-      { parse_mode: "HTML" }
-    );
+    console.error("Message handler error:", err.message);
   }
 });
 
