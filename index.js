@@ -1,6 +1,3 @@
-const https = require("https");
-fetchJson("https://api.ipify.org?format=json").then(d => console.log("Outbound IP:", d.ip));
-
 require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const https       = require("https");
@@ -15,6 +12,11 @@ const LEVERAGE       = parseInt(process.env.LEVERAGE ?? "20");
 const MARGIN_USDT    = parseFloat(process.env.MARGIN_USDT ?? "5");
 
 const bot = new TelegramBot(TOKEN, { polling: true });
+
+// ── Log outbound IP on startup ────────────────────────────────────────────────
+fetchJson("https://api.ipify.org?format=json")
+  .then(d => console.log("✅ Quantel Nexus automation bot running... Outbound IP:", d.ip))
+  .catch(() => console.log("✅ Quantel Nexus automation bot running..."));
 
 // ── Dedup: skip same symbol+side within 60s ───────────────────────────────────
 const recentTrades = new Map();
@@ -204,5 +206,3 @@ function roundToStep(qty, stepSize) {
   const precision = Math.round(-Math.log10(stepSize));
   return parseFloat((Math.floor(qty / stepSize) * stepSize).toFixed(precision));
 }
-
-console.log("✅ Quantel Nexus automation bot running...");
