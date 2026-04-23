@@ -1,3 +1,6 @@
+const https = require("https");
+fetchJson("https://api.ipify.org?format=json").then(d => console.log("Outbound IP:", d.ip));
+
 require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const https       = require("https");
